@@ -1,0 +1,491 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>SalvageRoute</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: deal builder of pick-groups (left) + sticky P&L ledger (right); full-width destination comparison and saved deals below */
+:root{
+  --bg:#EDF0F3; --paper:#FFFFFF; --ink:#12202B; --muted:#5A6977; --line:#D3DAE1; --chip:#F4F6F8;
+  --accent:#0E6E46; --accent-soft:#E0F0E7; --loss:#B4322B; --loss-soft:#F8E3E1; --warn:#9A6408; --warn-soft:#FBF0D9;
+  --s1:#2F5D7C; --s2:#5B8FB0; --s3:#C08A2E; --s4:#0E6E46; --s5:#7C6AA8;
+  --display:"Archivo",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E151B; --paper:#16212A; --ink:#E5ECF1; --muted:#93A3B1; --line:#283643; --chip:#1C2833;
+  --accent:#3FBF83; --accent-soft:#153327; --loss:#F07A70; --loss-soft:#3A1E1C; --warn:#E7B654; --warn-soft:#3A2E14;
+  --s1:#6FA3C7; --s2:#9CC3DD; --s3:#E0B05A; --s4:#3FBF83; --s5:#AE9EDB; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E151B; --paper:#16212A; --ink:#E5ECF1; --muted:#93A3B1; --line:#283643; --chip:#1C2833;
+  --accent:#3FBF83; --accent-soft:#153327; --loss:#F07A70; --loss-soft:#3A1E1C; --warn:#E7B654; --warn-soft:#3A2E14;
+  --s1:#6FA3C7; --s2:#9CC3DD; --s3:#E0B05A; --s4:#3FBF83; --s5:#AE9EDB; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.brand{font:800 clamp(28px,5vw,40px)/1 var(--display);font-stretch:80%;letter-spacing:-.01em;margin:0}
+.brand b{color:var(--accent);font-weight:800}
+.tag{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.stamp{font:500 12px var(--mono);color:var(--muted);text-align:right}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px 18px;min-width:0}
+.card h2{margin:0 0 12px;font:700 17px var(--display);font-stretch:90%;display:flex;align-items:baseline;gap:10px}
+.card h2 .step{font:500 11px var(--mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.card h2 .aside{margin-left:auto;font:500 12px var(--body);color:var(--muted)}
+.lbl{font-size:13px;font-weight:500;margin:10px 0 6px;display:block}
+.lbl:first-of-type{margin-top:0}
+/* country picker */
+.countries{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.cty{position:relative}
+.cty input{position:absolute;opacity:0;pointer-events:none}
+.cty label{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--chip);cursor:pointer;height:100%}
+.cty .code{font:500 11px var(--mono);letter-spacing:.08em;color:var(--muted)}
+.cty .nm{font-weight:600;font-size:14px}
+.cty .pt{font-size:12px;color:var(--muted);line-height:1.3}
+.cty input:checked+label{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.cty input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px}
+.cty.blocked label{opacity:.6}
+.cty.blocked .code::after{content:" · not allowed";color:var(--loss)}
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px;border:0;margin:0;padding:0}
+.chips legend{padding:0}
+.chip{position:relative}
+.chip input{position:absolute;opacity:0;pointer-events:none}
+.chip span{display:inline-flex;flex-direction:column;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--chip);cursor:pointer;font-size:13.5px;font-weight:500;line-height:1.25}
+.chip span small{font-weight:400;color:var(--muted);font-size:11.5px}
+.chip input:checked+span{border-color:var(--accent);background:var(--accent-soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--accent)}
+.chip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 14px}
+select{width:100%;font:500 14.5px var(--body);color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.spec{font:500 12.5px var(--mono);color:var(--muted);margin-top:8px}
+/* fine tune */
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f label{font-size:13px;font-weight:500;display:flex;gap:6px;align-items:baseline}
+.f label em{font-style:normal;font:500 10.5px var(--mono);color:var(--warn);letter-spacing:.04em;text-transform:uppercase}
+.f small{color:var(--muted);font-size:12px;line-height:1.35}
+.inp{display:flex;align-items:center;border:1px solid var(--line);border-radius:7px;background:var(--bg);overflow:hidden}
+.inp span{padding:0 8px;color:var(--muted);font:500 13px var(--mono);white-space:nowrap}
+.inp input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:500 15px var(--mono);padding:8px 8px 8px 0;font-variant-numeric:tabular-nums}
+.inp:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.f.edited .inp{border-color:var(--s3)}
+.linkbtn{background:none;border:0;color:var(--accent);font:600 13px var(--body);cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ledger */
+.ledger{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:14px}
+@media (max-width:920px){.ledger{position:static}}
+.verdict{border-radius:8px;padding:14px;background:var(--accent-soft)}
+.verdict.loss{background:var(--loss-soft)}
+.verdict.block{background:var(--chip)}
+.verdict .k{font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.verdict.loss .k{color:var(--loss)} .verdict.block .k{color:var(--muted)}
+.verdict .big{font:800 42px/1.05 var(--display);font-stretch:78%;color:var(--accent);font-variant-numeric:tabular-nums}
+.verdict.loss .big{color:var(--loss)} .verdict.block .big{color:var(--muted);font-size:26px}
+.verdict .sub{font:500 13.5px var(--mono);margin-top:2px}
+.flags{display:flex;flex-direction:column;gap:6px;list-style:none;margin:0;padding:0}
+.flags li{font-size:13px;line-height:1.4;padding:7px 10px;border-radius:6px;background:var(--chip);display:flex;gap:8px}
+.flags li b{font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;flex:none;padding-top:2px}
+.flags li.block{background:var(--loss-soft)} .flags li.block b{color:var(--loss)}
+.flags li.warn{background:var(--warn-soft)} .flags li.warn b{color:var(--warn)}
+.flags li.ok b{color:var(--accent)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:14px}
+.kv .v{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.kv .hl{font-weight:600}
+h3{margin:0;font:700 14px var(--display);font-stretch:90%;letter-spacing:.02em}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--line);margin:8px 0}
+.bar i{display:block;height:100%}
+.legend{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;font-size:12.5px;align-items:center}
+.legend .v{font-family:var(--mono);text-align:right}
+.dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13.5px;vertical-align:top}
+th{font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+tr.tot td{font-weight:600;border-bottom:0}
+.tbl{overflow-x:auto}
+.pos{color:var(--accent)} .neg{color:var(--loss)} .mut{color:var(--muted)}
+.pill{display:inline-block;font:600 10.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.pill.ok{background:var(--accent-soft);color:var(--accent)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.block{background:var(--loss-soft);color:var(--loss)}
+tr.sel td{background:var(--chip)}
+.rowbtn{background:none;border:0;padding:0;font:600 13.5px var(--body);color:var(--ink);cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.rowbtn:hover{text-decoration-color:var(--accent)}
+.rowbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:600 13.5px var(--body);color:var(--paper);background:var(--accent);border:0;border-radius:7px;padding:9px 14px;cursor:pointer}
+.btn:focus-visible,.ghost:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ghost{font:600 13px var(--body);color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 10px;cursor:pointer}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.toast{font-size:13px;color:var(--accent)}
+.note{font-size:13px;color:var(--muted)}
+.note ul{margin:6px 0 0;padding-left:18px}
+.note li{margin:3px 0}
+.empty{color:var(--muted);font-size:13.5px;padding:8px 0}
+@media (prefers-reduced-motion:no-preference){.verdict .big{transition:color .2s}}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1 class="brand">Salvage<b>Route</b></h1>
+      <p class="tag">Pick a car, a damage level and a destination. See the landed cost, taxes, repair, resale and profit for a US auction car exported abroad, then compare every market side by side.</p>
+    </div>
+    <div class="stamp">Tax rules & FX as of Oct 2026<br>Estimates only. Confirm with a licensed broker.</div>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+
+      <section class="card">
+        <h2><span class="step">Step 1</span>Destination</h2>
+        <div class="countries" id="countries" role="radiogroup" aria-label="Destination country"></div>
+        <div id="customBox" hidden style="margin-top:12px">
+          <div class="fields">
+            <div class="f"><label for="cx_name">Country name</label><div class="inp"><input id="cx_name" type="text" value="My market" style="padding-left:8px"></div></div>
+            <div class="f"><label for="cx_cur">Currency code</label><div class="inp"><input id="cx_cur" type="text" value="USD" style="padding-left:8px"></div></div>
+            <div class="f"><label for="cx_duty">Import duty %</label><div class="inp"><span>%</span><input id="cx_duty" type="number" inputmode="decimal" value="20"></div></div>
+            <div class="f"><label for="cx_other">Other levies % of value</label><div class="inp"><span>%</span><input id="cx_other" type="number" inputmode="decimal" value="5"></div></div>
+            <div class="f"><label for="cx_vat">VAT / sales tax %</label><div class="inp"><span>%</span><input id="cx_vat" type="number" inputmode="decimal" value="15"></div><small>Charged on value + duty + levies.</small></div>
+            <div class="f"><label for="cx_freight">Ocean freight (East Coast)</label><div class="inp"><span>$</span><input id="cx_freight" type="number" inputmode="decimal" value="1500"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">Step 2</span>Vehicle</h2>
+        <div class="row">
+          <div><label class="lbl" for="model">Make & model</label><select id="model"></select></div>
+          <div><label class="lbl" for="year">Model year</label><select id="year"></select></div>
+        </div>
+        <div class="spec" id="spec"></div>
+        <span class="lbl" style="margin-top:14px">Damage</span>
+        <fieldset class="chips" id="damage"><legend class="lbl" hidden>Damage</legend></fieldset>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">Step 3</span>Buying & logistics</h2>
+        <span class="lbl">Auction</span>
+        <fieldset class="chips" id="auction"></fieldset>
+        <span class="lbl">How you buy</span>
+        <fieldset class="chips" id="buyer"></fieldset>
+        <span class="lbl">US export port</span>
+        <fieldset class="chips" id="region"></fieldset>
+        <span class="lbl">Lot distance to port</span>
+        <fieldset class="chips" id="dist"></fieldset>
+        <span class="lbl">Shipping method</span>
+        <fieldset class="chips" id="method"></fieldset>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">Step 4</span>Fine-tune the numbers<span class="aside"><button type="button" class="linkbtn" id="resetEdits">Reset to suggested</button></span></h2>
+        <p class="note" style="margin:-4px 0 12px">Suggested figures update with your picks. Type over any of them with a real quote or listing; edited fields keep your number and are outlined.</p>
+        <div class="fields" id="fields"></div>
+      </section>
+
+    </div>
+
+    <aside class="ledger" aria-live="polite">
+      <div class="card" style="display:flex;flex-direction:column;gap:14px">
+        <div class="verdict" id="verdict"><div class="k" id="vk">Profit per car</div><div class="big" id="vbig">$0</div><div class="sub" id="vsub"></div></div>
+        <ul class="flags" id="flags"></ul>
+        <div class="kv">
+          <span>Return on money invested</span><span class="v hl" id="roi"></span>
+          <span>Total cost</span><span class="v" id="tot"></span>
+          <span>Sale proceeds in USD</span><span class="v" id="sale"></span>
+          <span>Break-even selling price</span><span class="v hl" id="be"></span>
+          <span>Principal with buffer</span><span class="v hl" id="principal"></span>
+        </div>
+        <div>
+          <h3>Where the money goes</h3>
+          <div class="bar" id="bar"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div>
+          <h3>Import taxes</h3>
+          <div class="tbl"><table id="taxTbl"></table></div>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn" id="save">Save this deal</button>
+          <span class="toast" id="toast" role="status"></span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="card">
+    <h2>Compare destinations<span class="aside">Same car, damage, auction and towing. Each market uses its own freight, taxes, repair cost and resale estimate.</span></h2>
+    <div class="tbl"><table id="cmp"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Saved deals<span class="aside">Stored in this browser only</span></h2>
+    <div class="tbl" id="savedWrap"></div>
+  </section>
+
+  <section class="card note">
+    <strong style="color:var(--ink)">How the numbers are built</strong>
+    <ul>
+      <li>Resale and repair figures start from an estimated clean US retail value for the car and year, adjusted for damage and each market. They are rough; replace them with real local listings and workshop quotes.</li>
+      <li>Nigeria and Ghana tax a reference value for the car, not your purchase price, so cheap damaged cars still pay full-value duty. Ukraine, Georgia, Poland, the Dominican Republic and the UAE tax what you paid plus freight.</li>
+      <li>Poland: US-built cars pay 0% EU duty under Regulation (EU) 2026/1455; others pay 10%.</li>
+      <li>Rates marked "verify" come from a single secondary source. Rates and exchange rates change often. This is not financial, legal or tax advice.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function(){
+var NOW=2026;
+var MODELS=[
+ {id:"camry",n:"Toyota Camry",msrp:26000,cc:function(){return 2500},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"corolla",n:"Toyota Corolla",msrp:21000,cc:function(){return 1800},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"accord",n:"Honda Accord",msrp:27000,cc:function(y){return y<2018?2400:1500},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"civic",n:"Honda Civic",msrp:23000,cc:function(y){return y<2016?1800:2000},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"elantra",n:"Hyundai Elantra",msrp:20000,cc:function(){return 2000},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"rav4",n:"Toyota RAV4",msrp:29000,cc:function(){return 2500},fuel:function(){return"petrol"},us:function(){return false}},
+ {id:"highlander",n:"Toyota Highlander",msrp:37000,cc:function(){return 3500},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"sienna",n:"Toyota Sienna",msrp:35000,cc:function(y){return y>=2021?2500:3500},fuel:function(y){return y>=2021?"hybrid":"petrol"},us:function(){return true}},
+ {id:"rx350",n:"Lexus RX 350",msrp:47000,cc:function(){return 3500},fuel:function(){return"petrol"},us:function(){return false}},
+ {id:"c300",n:"Mercedes-Benz C300",msrp:44000,cc:function(){return 2000},fuel:function(){return"petrol"},us:function(y){return y<2022}},
+ {id:"f150",n:"Ford F-150",msrp:42000,cc:function(){return 3500},fuel:function(){return"petrol"},us:function(){return true}},
+ {id:"prius",n:"Toyota Prius",msrp:27000,cc:function(){return 1800},fuel:function(){return"hybrid"},us:function(){return false}},
+ {id:"model3",n:"Tesla Model 3",msrp:42000,cc:function(){return 0},fuel:function(){return"ev"},us:function(){return true}}
+];
+var DAMAGE=[
+ {id:"light",n:"Light",d:"Cosmetic, drives",bid:.45,rep:.07,hair:.95},
+ {id:"moderate",n:"Moderate",d:"Front/rear hit, airbags OK",bid:.30,rep:.16,hair:.90},
+ {id:"heavy",n:"Heavy",d:"Airbags out or frame",bid:.18,rep:.30,hair:.82},
+ {id:"flood",n:"Flood",d:"Water damage",bid:.22,rep:.25,hair:.70},
+ {id:"fire",n:"Fire",d:"Burnt",bid:.10,rep:.45,hair:.60}
+];
+var AUCTION=[{id:"copart",n:"Copart",k:1},{id:"iaai",n:"IAAI",k:1.03}];
+var BUYER=[{id:"broker",n:"Through a broker",d:"No dealer licence"},{id:"dealer",n:"Licensed dealer",d:"Lower fees"}];
+var REGION=[{id:"east",n:"East Coast",d:"NJ · GA · FL",add:0},{id:"gulf",n:"Gulf",d:"Houston",add:150},{id:"west",n:"West Coast",d:"LA · Seattle",add:700}];
+var DIST=[{id:"d1",n:"Under 100 mi",c:250},{id:"d2",n:"100–300 mi",c:450},{id:"d3",n:"300–700 mi",c:800},{id:"d4",n:"700+ mi",c:1300}];
+var METHOD=[{id:"shared",n:"Shared container",d:"3–4 cars per 40ft",k:1},{id:"sole",n:"Own 20ft container",d:"One car",k:2.1},{id:"roro",n:"RoRo",d:"Car must drive",k:1.05}];
+
+function pct(x){return x}
+var C={
+ NG:{n:"Nigeria",port:"Lagos · Tin Can / Apapa",cur:"NGN",sym:"₦",fx:1390,spread:2.2,freight:1300,market:1.0,repair:.9,fees:775,val:"book",book:.5,maxAge:12,
+  tax:function(v){var cv=v.cv,d=.2*cv,s=.07*d,l=.05*cv,e=.005*cv,ci=.01*cv,g=v.fuel==="ev"?0:(v.cc<=2000?0:v.cc<=3500?.02:.04)*cv,vat=.075*(cv+d+s+l+e+ci+g);
+   return [["Import duty 20%",d],["Surcharge 7% of duty",s],["NAC levy 5%",l],["ETLS 0.5%",e],["CISS 1%",ci],["Green tax",g],["VAT 7.5%",vat]];}},
+ GH:{n:"Ghana",port:"Tema",cur:"GHS",sym:"GH₵",fx:11.6,spread:2,freight:1200,market:1.1,repair:.9,fees:700,val:"book",book:.6,maxAge:15,
+  tax:function(v){var cv=v.cv,r;if(v.fuel==="ev")r=0;else if(v.fuel==="diesel")r=v.cc<=1500?.05:v.cc<=2500?.1:.2;else r=v.cc<=1000?.05:v.cc<=3000?.1:.2;
+   var d=r*cv,lev=(.005+.002+.0075+.02)*cv,ex=.01*cv,over=v.age>12?.2*cv:v.age>10?.05*cv:0,vat=.2*(cv+d);
+   return [["Import duty "+(r*100)+"%",d],["ECOWAS, AU, EXIM & special levies (verify)",lev],["Examination fee 1%",ex],["Overage penalty",over],["VAT 15% + NHIL 2.5% + GETFund 2.5%",vat]];}},
+ UA:{n:"Ukraine",port:"Klaipėda, then by road",cur:"UAH",sym:"₴",fx:45.2,spread:1.5,freight:2100,market:1.15,repair:.75,fees:600,val:"cif",
+  tax:function(v){var cv=v.cv,ev=v.fuel==="ev",d=ev?0:.1*cv,base=v.fuel==="diesel"?(v.cc<=3500?75:150):(v.cc<=3000?50:100),ac=Math.min(15,Math.max(1,v.age-1)),
+   exEUR=ev?75:base*(v.cc/1000)*ac,ex=exEUR/0.8926,vat=.2*(cv+d+ex),uah=cv*45.2,pf=(uah>965120?.05:uah>549120?.04:.03)*cv;
+   return [["Import duty "+(ev?"0":"10")+"%",d],["Excise €"+Math.round(exEUR).toLocaleString("en-US")+(ev?"":" (age factor "+ac+")"),ex],["VAT 20%",vat],["Pension Fund levy at registration",pf]];}},
+ GE:{n:"Georgia",port:"Poti",cur:"GEL",sym:"₾",fx:2.65,spread:1,freight:1700,market:1.0,repair:.7,fees:450,val:"cif",
+  tax:function(v){var cv=v.cv,fx=2.65,ev=v.fuel==="ev",dG=ev?0:.05*v.cc*(1+.05*v.age),rate=ev?0:v.age>30?1:v.age>6?4.5:1.5,exG=rate*v.cc,d=dG/fx,ex=exG/fx,vat=.18*(cv+d+ex);
+   return [["Import duty (per cc, by age)",d],["Excise "+rate+" ₾/cc"+(v.age>6?" (over 6 yrs, verify)":""),ex],["VAT 18%",vat]];}},
+ PL:{n:"Poland (EU)",port:"Bremerhaven / Gdynia",cur:"PLN",sym:"zł ",fx:3.79,spread:.8,freight:1500,market:1.15,repair:1.0,fees:900,val:"cif",
+  tax:function(v){var cv=v.cv,dr=v.us?0:.1,d=dr*cv,er=v.fuel==="ev"?0:v.fuel==="hybrid"?(v.cc<=2000?.0155:.093):(v.cc<=2000?.031:.186),ex=er*(cv+d),vat=.23*(cv+d+ex);
+   return [["EU duty "+(dr*100)+"%"+(v.us?" (US-built)":""),d],["Excise "+(er*100).toFixed(er*100%1?2:0)+"%",ex],["VAT 23%",vat]];}},
+ DO:{n:"Dominican Republic",port:"Santo Domingo · Caucedo",cur:"DOP",sym:"RD$",fx:61.6,spread:.8,freight:1000,market:1.3,repair:.85,fees:600,val:"cif",maxAge:5,verify:true,
+  tax:function(v){var cv=v.cv,d=.2*cv,it=.18*(cv+d),fr=.17*cv;return [["Import duty 20% (verify)",d],["ITBIS 18% (verify)",it],["First registration 17% (verify)",fr]];}},
+ AE:{n:"UAE",port:"Jebel Ali · re-export hub",cur:"AED",sym:"AED ",fx:3.6725,spread:.3,freight:1800,market:.95,repair:.8,fees:500,val:"cif",
+  tax:function(v){var cv=v.cv,d=.05*cv,vat=.05*(cv+d);return [["Customs duty 5%",d],["VAT 5%",vat]];}},
+ JM:{n:"Jamaica",port:"Kingston",blocked:"Jamaica Customs prohibits importing damaged or salvaged vehicles."},
+ KE:{n:"Kenya",port:"Mombasa",blocked:"Kenya bans left-hand-drive cars for road use, and US cars are left-hand drive."},
+ XX:{n:"Custom",port:"Enter your own rates",cur:"USD",sym:"$",fx:1,spread:1,freight:1500,market:1.1,repair:.85,fees:700,val:"cif",custom:true,
+  tax:function(v){var cv=v.cv,d=num("cx_duty")/100*cv,o=num("cx_other")/100*cv,vat=num("cx_vat")/100*(cv+d+o);return [["Import duty",d],["Other levies",o],["VAT / sales tax",vat]];}}
+};
+var ORDER=["NG","GH","UA","GE","PL","DO","AE","JM","KE","XX"];
+
+var FIELDS=[
+ ["bid","Winning bid","$","Typical hammer price for this car and damage."],
+ ["fees","Auction fees","$","Buyer, virtual-bid, gate and environmental fees."],
+ ["broker","Broker fee","$","Needed without a dealer licence."],
+ ["tow","Towing to port","$",""],
+ ["freight","Ocean freight","$",""],
+ ["ins","Marine insurance","$",""],
+ ["cv","Customs value","$",""],
+ ["repair","Repairs: parts & labour","$","In dollars you convert. Get a local workshop quote."],
+ ["localfees","Clearing, port & registration","$",""],
+ ["resale","Selling price","LOCAL","Check local listings for the same car and year."],
+ ["fx","Exchange rate","LOCAL/$","Local currency per $1."],
+ ["spread","FX loss bringing money home","%","Gap between the rate you sell dollars at and buy them back."],
+ ["buffer","Contingency buffer","%","Hidden damage, port delays, rate swings."]
+];
+
+var state={country:"NG",model:"camry",year:2017,damage:"moderate",auction:"copart",buyer:"broker",region:"east",dist:"d2",method:"shared"};
+var edited={};
+var KEY="salvageroute-v1";
+
+function $(id){return document.getElementById(id)}
+function num(id){var x=parseFloat($(id).value);return isFinite(x)?x:0}
+function find(arr,id){for(var i=0;i<arr.length;i++)if(arr[i].id===id)return arr[i];return arr[0]}
+function usd(n){return (n<0?"−$":"$")+Math.abs(Math.round(n)).toLocaleString("en-US")}
+function loc(n,c){return (n<0?"−":"")+c.sym+Math.abs(Math.round(n)).toLocaleString("en-US")}
+function esc(s){return String(s).replace(/[&<>"]/g,function(m){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]})}
+function country(id){var c=C[id];if(id==="XX"){c.n=$("cx_name").value||"Custom";c.cur=$("cx_cur").value||"USD";c.freight=num("cx_freight")}return c}
+
+function auctionFee(bid,auc,buyer){
+  if(buyer==="dealer")return Math.max(300,.055*bid+200)*auc.k;
+  var pts=[[0,300],[1000,450],[3000,750],[5000,1000],[10000,1550],[15000,2000]],f;
+  if(bid>=15000)f=2000+.07*(bid-15000);
+  else for(var i=1;i<pts.length;i++){if(bid<=pts[i][0]){var a=pts[i-1],b=pts[i];f=a[1]+(b[1]-a[1])*(bid-a[0])/(b[0]-a[0]);break;}}
+  return f*auc.k;
+}
+function cleanValue(m,y){var age=Math.max(1,NOW-y);return Math.max(.15*m.msrp,m.msrp*.8*Math.pow(.94,age-1))}
+
+// suggested values for a given country (US-side optional override)
+function suggest(cid,s){
+  var c=country(cid),m=find(MODELS,s.model),dm=find(DAMAGE,s.damage),y=+s.year,clean=cleanValue(m,y);
+  var bid=Math.round(clean*dm.bid/25)*25,auc=find(AUCTION,s.auction),fees=auctionFee(bid,auc,s.buyer);
+  var o={bid:bid,fees:Math.round(fees),broker:s.buyer==="broker"?300:0,tow:find(DIST,s.dist).c,
+    ins:Math.max(75,Math.round(.015*bid))};
+  if(c.blocked)return o;
+  o.freight=Math.round((c.freight+find(REGION,s.region).add)*find(METHOD,s.method).k);
+  o.repair=Math.round(clean*dm.rep*c.repair/10)*10;
+  o.localfees=c.fees;o.fx=c.fx;o.spread=c.spread;o.buffer=15;
+  o.resale=Math.round(clean*c.market*dm.hair*c.fx/ (c.fx>100?100000:c.fx>10?100:10))*(c.fx>100?100000:c.fx>10?100:10);
+  o.cv=c.val==="book"?Math.round(clean*c.book):null;
+  return o;
+}
+function evaluate(cid,s,vals){
+  var c=country(cid),m=find(MODELS,s.model),y=+s.year,age=NOW-y,dm=find(DAMAGE,s.damage);
+  var r={c:c,flags:[]};
+  if(c.blocked){r.blocked=true;r.flags.push(["block",c.blocked]);return r;}
+  if(c.maxAge&&age>c.maxAge){r.blocked=true;r.flags.push(["block",c.n+" only allows cars up to "+c.maxAge+" years old. Oldest allowed now: "+(NOW-c.maxAge)+"."]);}
+  if(cid==="GH"&&/heavy|flood|fire/.test(s.damage)){r.blocked=true;r.flags.push(["block","Since 1 Oct 2026 Ghana bans flood-damaged, burnt and structurally damaged cars."]);}
+  var us=vals.bid+vals.fees+vals.broker+vals.tow+vals.freight+vals.ins;
+  var cv=c.val==="book"?vals.cv:vals.bid+vals.fees+vals.freight+vals.ins;
+  var lines=c.tax({cv:cv,cc:m.cc(y),fuel:m.fuel(y),age:age,us:m.us(y)});
+  var tax=0;lines.forEach(function(l){tax+=l[1]});
+  var fx=Math.max(vals.fx,1e-9),sale=vals.resale/(fx*(1+vals.spread/100));
+  var cost=us+tax+vals.repair+vals.localfees,profit=sale-cost;
+  r.cv=cv;r.lines=lines;r.tax=tax;r.us=us;r.cost=cost;r.sale=sale;r.profit=profit;r.roi=cost>0?profit/cost:0;
+  r.be=cost*fx*(1+vals.spread/100);r.principal=cost*(1+vals.buffer/100);
+  r.parts=[["Auction & towing",vals.bid+vals.fees+vals.broker+vals.tow,"--s1"],["Shipping",vals.freight+vals.ins,"--s2"],["Import taxes",tax,"--s3"],["Repairs",vals.repair,"--s4"],["Port & registration",vals.localfees,"--s5"]];
+  if(s.method==="roro"&&s.damage!=="light")r.flags.push(["warn","RoRo ships cars that drive on board. Damaged non-runners usually go by container."]);
+  if(cid==="GH"&&age>10&&age<=15)r.flags.push(["warn","Ghana adds an overage penalty for cars over 10 years old."]);
+  if(cid==="GE"&&age>6)r.flags.push(["warn","Georgia triples the excise for cars over 6 years old since April 2026."]);
+  if(cid==="PL")r.flags.push([m.us(y)?"ok":"warn",m.us(y)?"US-built car: 0% EU duty applies with proof of origin.":"Not US-built: 10% EU duty applies."]);
+  if(c.val==="book")r.flags.push(["warn","Customs taxes a reference value for this car, not your purchase price. Ask a clearing agent for the exact figure before bidding."]);
+  if(s.damage==="flood")r.flags.push(["warn","Flood cars often hide electrical faults that show up months later."]);
+  if(s.region==="west"&&/NG|GH|DO/.test(cid))r.flags.push(["warn","West Coast lots cost more to ship here. East Coast or Gulf auctions are usually cheaper."]);
+  if(c.verify)r.flags.push(["warn","Tax rates for this market are unverified estimates. Confirm with a local broker."]);
+  if(m.fuel(y)==="ev"&&cid!=="UA"&&cid!=="PL")r.flags.push(["warn","EV parts and repair skills may be scarce in this market."]);
+  if(!r.blocked&&r.flags.every(function(f){return f[0]!=="block"}))r.flags.unshift(["ok","Car is eligible to import based on age and damage."]);
+  return r;
+}
+
+/* ---------- build UI ---------- */
+function chips(el,name,arr,val){
+  $(el).innerHTML=arr.map(function(o){return '<label class="chip"><input type="radio" name="'+name+'" value="'+o.id+'"'+(o.id===val?" checked":"")+'><span>'+esc(o.n)+(o.d?'<small>'+esc(o.d)+'</small>':"")+'</span></label>'}).join("");
+}
+$("countries").innerHTML=ORDER.map(function(id){var c=C[id];return '<div class="cty'+(c.blocked?" blocked":"")+'"><input type="radio" name="country" id="c_'+id+'" value="'+id+'"><label for="c_'+id+'"><span class="code">'+(id==="XX"?"ANY":id)+'</span><span class="nm">'+esc(c.n)+'</span><span class="pt">'+esc(c.port)+'</span></label></div>'}).join("");
+$("model").innerHTML=MODELS.map(function(m){return '<option value="'+m.id+'">'+esc(m.n)+'</option>'}).join("");
+var yo="";for(var y=2025;y>=2010;y--)yo+='<option value="'+y+'">'+y+'</option>';$("year").innerHTML=yo;
+$("fields").innerHTML=FIELDS.map(function(f){return '<div class="f" id="w_'+f[0]+'"><label for="v_'+f[0]+'">'+esc(f[1])+'</label><div class="inp"><span id="u_'+f[0]+'">'+f[2]+'</span><input id="v_'+f[0]+'" type="number" inputmode="decimal" step="any"></div><small id="h_'+f[0]+'">'+esc(f[3])+'</small></div>'}).join("");
+
+function load(){try{var s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&s.state){Object.assign(state,s.state);edited=s.edited||{};}}catch(e){}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify({state:state,edited:edited}))}catch(e){}}
+
+function syncPicks(){
+  $("c_"+state.country).checked=true;$("model").value=state.model;$("year").value=state.year;
+  chips("damage","damage",DAMAGE,state.damage);chips("auction","auction",AUCTION,state.auction);chips("buyer","buyer",BUYER,state.buyer);
+  chips("region","region",REGION,state.region);chips("dist","dist",DIST,state.dist);chips("method","method",METHOD,state.method);
+}
+function currentVals(){
+  var sug=suggest(state.country,state),v={};
+  FIELDS.forEach(function(f){var k=f[0],el=$("v_"+k);
+    if(edited[k]!=null){el.value=edited[k];}else{el.value=sug[k]==null?"":sug[k];}
+    v[k]=num("v_"+k);$("w_"+k).classList.toggle("edited",edited[k]!=null);});
+  return {v:v,sug:sug};
+}
+function render(){
+  var c=country(state.country),m=find(MODELS,state.model),y=+state.year;
+  $("customBox").hidden=state.country!=="XX";
+  var showCV=!c.blocked&&c.val==="book";
+  $("w_cv").hidden=!showCV;
+  $("h_cv").textContent=showCV?"Customs reference value for this VIN. Your clearing agent can look it up.":"";
+  ["freight","repair","localfees","resale","fx","spread","buffer"].forEach(function(k){$("w_"+k).hidden=!!c.blocked});
+  $("u_resale").textContent=(c.sym||"").trim();$("u_fx").textContent=(c.cur||"")+"/$";
+  $("spec").textContent=(m.cc(y)?(m.cc(y)/1000).toFixed(1)+"L ":"")+{petrol:"petrol",hybrid:"hybrid",diesel:"diesel",ev:"electric"}[m.fuel(y)]+" · "+(NOW-y)+" yrs old · "+(m.us(y)?"US-built":"imported to US")+" · est. clean US value "+usd(cleanValue(m,y));
+  var cv=currentVals(),v=cv.v,r=evaluate(state.country,state,v);
+  // verdict
+  var vd=$("verdict");
+  if(r.blocked){vd.className="verdict block";$("vk").textContent="Can't import";$("vbig").textContent="Not allowed";$("vsub").textContent=c.n;}
+  else{vd.className="verdict"+(r.profit<0?" loss":"");$("vk").textContent=r.profit<0?"Loss per car":"Profit per car";$("vbig").textContent=usd(r.profit);
+    $("vsub").textContent=loc(r.profit*v.fx,c)+" · "+y+" "+m.n+" → "+c.n;}
+  $("flags").innerHTML=r.flags.map(function(f){return '<li class="'+f[0]+'"><b>'+(f[0]==="block"?"Blocked":f[0]==="warn"?"Check":"OK")+'</b><span>'+esc(f[1])+'</span></li>'}).join("");
+  var dash="—";
+  $("roi").textContent=r.blocked?dash:(r.roi*100).toFixed(1)+"%";
+  $("tot").textContent=r.blocked?dash:usd(r.cost);
+  $("sale").textContent=r.blocked?dash:usd(r.sale);
+  $("be").textContent=r.blocked?dash:loc(r.be,c);
+  $("principal").textContent=r.blocked?dash:usd(r.principal);
+  if(r.blocked){$("bar").innerHTML="";$("legend").innerHTML="";$("taxTbl").innerHTML='<tr><td class="mut">No taxes shown for a blocked import.</td></tr>';}
+  else{
+    var bar="",leg="";r.parts.forEach(function(p){var pc=r.cost>0?p[1]/r.cost*100:0;bar+='<i style="width:'+pc+'%;background:var('+p[2]+')"></i>';
+      leg+='<span class="dot" style="background:var('+p[2]+')"></span><span>'+p[0]+' · '+pc.toFixed(0)+'%</span><span class="v">'+usd(p[1])+'</span>'});
+    $("bar").innerHTML=bar;$("legend").innerHTML=leg;
+    var t='<tr><th>Charge</th><th class="n">USD</th><th class="n">'+esc(c.cur)+'</th></tr><tr><td>Taxed value ('+(c.val==="book"?"reference":"price + freight")+')</td><td class="n">'+usd(r.cv)+'</td><td class="n">'+loc(r.cv*v.fx,c)+'</td></tr>';
+    r.lines.forEach(function(l){t+='<tr><td>'+esc(l[0])+'</td><td class="n">'+usd(l[1])+'</td><td class="n">'+loc(l[1]*v.fx,c)+'</td></tr>'});
+    t+='<tr class="tot"><td>Total import taxes</td><td class="n">'+usd(r.tax)+'</td><td class="n">'+loc(r.tax*v.fx,c)+'</td></tr>';
+    $("taxTbl").innerHTML=t;
+  }
+  renderCompare(v);renderSaved();persist();
+}
+function renderCompare(v){
+  var rows=ORDER.filter(function(id){return id!=="XX"||state.country==="XX"}).map(function(id){
+    var sug=suggest(id,state),vals={};
+    FIELDS.forEach(function(f){vals[f[0]]=sug[f[0]]});
+    ["bid","fees","broker","tow","ins"].forEach(function(k){vals[k]=v[k]});
+    if(id===state.country)vals=v;
+    return {id:id,r:evaluate(id,state,vals),vals:vals};
+  });
+  rows.sort(function(a,b){if(!!a.r.blocked!==!!b.r.blocked)return a.r.blocked?1:-1;return (b.r.profit||0)-(a.r.profit||0)});
+  var h='<tr><th>Destination</th><th class="n">Taxes</th><th class="n">Total cost</th><th class="n">Sells for</th><th class="n">Profit</th><th class="n">ROI</th><th>Status</th></tr>';
+  rows.forEach(function(x){var r=x.r,c=r.c,sel=x.id===state.country?' class="sel"':"";
+    var warn=r.flags.some(function(f){return f[0]==="warn"});
+    var pill=r.blocked?'<span class="pill block">Blocked</span>':warn?'<span class="pill warn">Check</span>':'<span class="pill ok">Clear</span>';
+    if(r.blocked){h+='<tr'+sel+'><td><button type="button" class="rowbtn" data-c="'+x.id+'">'+esc(c.n)+'</button></td><td colspan="5" class="mut">'+esc(r.flags[0][1])+'</td><td>'+pill+'</td></tr>';return;}
+    h+='<tr'+sel+'><td><button type="button" class="rowbtn" data-c="'+x.id+'">'+esc(c.n)+'</button></td><td class="n">'+usd(r.tax)+'</td><td class="n">'+usd(r.cost)+'</td><td class="n">'+loc(x.vals.resale,c)+'</td><td class="n '+(r.profit<0?"neg":"pos")+'">'+usd(r.profit)+'</td><td class="n">'+(r.roi*100).toFixed(0)+'%</td><td>'+pill+'</td></tr>';
+  });
+  $("cmp").innerHTML=h;
+}
+function getSaved(){try{return JSON.parse(localStorage.getItem(KEY+"-deals")||"[]")}catch(e){return[]}}
+function setSaved(a){try{localStorage.setItem(KEY+"-deals",JSON.stringify(a));return true}catch(e){return false}}
+var memSaved=null;
+function renderSaved(){
+  var list=memSaved||getSaved();
+  if(!list.length){$("savedWrap").innerHTML='<p class="empty">No saved deals yet. Set up a car and press "Save this deal" to keep it here for comparison.</p>';return;}
+  var h='<table><tr><th>Deal</th><th>Saved</th><th class="n">Total cost</th><th class="n">Profit</th><th class="n">ROI</th><th></th></tr>';
+  list.forEach(function(d,i){h+='<tr><td><button type="button" class="rowbtn" data-load="'+i+'">'+esc(d.name)+'</button></td><td class="mut">'+esc(d.date)+'</td><td class="n">'+(d.blocked?"—":usd(d.cost))+'</td><td class="n '+(d.profit<0?"neg":"pos")+'">'+(d.blocked?"Blocked":usd(d.profit))+'</td><td class="n">'+(d.blocked?"—":(d.roi*100).toFixed(1)+"%")+'</td><td><button type="button" class="ghost" data-del="'+i+'">Remove</button></td></tr>'});
+  $("savedWrap").innerHTML=h+'</table>';
+}
+
+/* ---------- events ---------- */
+document.addEventListener("change",function(e){
+  var t=e.target;if(t.type==="radio"&&state.hasOwnProperty(t.name)){state[t.name]=t.value;if(t.name==="country"){delete edited.resale;delete edited.fx;delete edited.cv;delete edited.freight;delete edited.repair;delete edited.localfees;delete edited.spread;}render();}
+});
+$("model").addEventListener("change",function(){state.model=this.value;edited={};render()});
+$("year").addEventListener("change",function(){state.year=+this.value;delete edited.bid;delete edited.fees;delete edited.cv;delete edited.resale;delete edited.repair;render()});
+["cx_name","cx_cur","cx_duty","cx_other","cx_vat","cx_freight"].forEach(function(id){$(id).addEventListener("input",render)});
+FIELDS.forEach(function(f){$("v_"+f[0]).addEventListener("input",function(){edited[f[0]]=this.value;if(f[0]==="bid"&&edited.fees==null){}render()})});
+$("resetEdits").addEventListener("click",function(){edited={};render()});
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-c]");if(b){state.country=b.getAttribute("data-c");edited={bid:edited.bid,fees:edited.fees,broker:edited.broker,tow:edited.tow,ins:edited.ins};Object.keys(edited).forEach(function(k){if(edited[k]==null)delete edited[k]});syncPicks();render();$("c_"+state.country).focus();return;}
+  var l=e.target.closest("[data-load]");if(l){var d=(memSaved||getSaved())[+l.getAttribute("data-load")];if(d){state=Object.assign({},d.state);edited=Object.assign({},d.edited);syncPicks();render();window.scrollTo({top:0,behavior:"smooth"});}return;}
+  var x=e.target.closest("[data-del]");if(x){var a=(memSaved||getSaved()).slice();a.splice(+x.getAttribute("data-del"),1);if(!setSaved(a))memSaved=a;render();}
+});
+$("save").addEventListener("click",function(){
+  var c=country(state.country),m=find(MODELS,state.model),r=evaluate(state.country,state,currentVals().v);
+  var d={name:state.year+" "+m.n+" · "+find(DAMAGE,state.damage).n.toLowerCase()+" → "+c.n,date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),
+    cost:r.cost||0,profit:r.profit||0,roi:r.roi||0,blocked:!!r.blocked,state:Object.assign({},state),edited:Object.assign({},edited)};
+  var a=(memSaved||getSaved()).slice();a.unshift(d);if(!setSaved(a))memSaved=a;
+  $("toast").textContent="Saved";setTimeout(function(){$("toast").textContent=""},1800);render();
+});
+
+load();syncPicks();render();
+})();
+</script>
+</html>
